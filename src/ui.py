@@ -29,45 +29,80 @@ except ModuleNotFoundError:
     )
 
 
-def build_recommendations(
+def stream_recommendations(
     user_prefs: Dict,
     songs: List[Dict],
     k: int,
     use_ai: bool,
     bias_threshold: float,
-) -> List[Dict]:
+):
     scored: List[Dict] = []
-
     for song in songs:
         breakdown = _score_breakdown(user_prefs, song)
         score, reasons = score_song(user_prefs, song)
         _, genre_share, bias_warning = detect_genre_bias(
             breakdown, score, threshold=bias_threshold
         )
-        scored.append(
-            {
-                "song": song,
-                "score": score,
-                "reasons": reasons,
-                "breakdown": breakdown,
-                "genre_share": genre_share,
-                "bias_warning": bias_warning,
-            }
+        scored.append({
+            "song": song, "score": score, "reasons": reasons,
+            "breakdown": breakdown, "genre_share": genre_share, "bias_warning": bias_warning,
+        })
+    scored.sort(key=lambda row: row["score"], reverse=True)
+    for row in scored[:k]:
+        row["explanation"] = generate_explanation(
+            user_prefs=user_prefs, song=row["song"], score=row["score"],
+            reasons=row["reasons"], breakdown=row["breakdown"],
+            bias_warning=row["bias_warning"], use_ai=use_ai,
+        )
+        yield row
+
+
+def _render_card(rank: int, row: Dict) -> None:
+    song = row["song"]
+    warning_html = (
+        '<span class="bias-pill">Genre Bias Flag</span>' if row["bias_warning"] else ""
+    )
+    breakdown = row["breakdown"]
+    total = sum(breakdown.values()) or 1
+
+    def bar(label: str, value: float, color: str) -> str:
+        pct = value / total * 100
+        return (
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+            f'<span style="width:58px;font-size:0.75rem;opacity:0.75;">{label}</span>'
+            f'<div style="flex:1;background:rgba(127,127,127,0.15);border-radius:4px;height:12px;">'
+            f'<div style="width:{pct:.1f}%;background:{color};border-radius:4px;height:100%;"></div>'
+            f'</div>'
+            f'<span style="width:32px;font-size:0.75rem;text-align:right;">{pct:.0f}%</span>'
+            f'</div>'
         )
 
-    scored.sort(key=lambda row: row["score"], reverse=True)
-    top_rows = scored[:k]
-    for row in top_rows:
-        row["explanation"] = generate_explanation(
-            user_prefs=user_prefs,
-            song=row["song"],
-            score=row["score"],
-            reasons=row["reasons"],
-            breakdown=row["breakdown"],
-            bias_warning=row["bias_warning"],
-            use_ai=use_ai,
-        )
-    return top_rows
+    breakdown_html = (
+        bar("Genre",    breakdown["genre"],    "#f472b6") +
+        bar("Mood",     breakdown["mood"],     "#a78bfa") +
+        bar("Energy",   breakdown["energy"],   "#f6ad55") +
+        bar("Acoustic", breakdown["acoustic"], "#2dd4bf")
+    )
+
+    st.markdown(
+        f"""
+        <div class="song-card" style="display:flex;gap:0;align-items:stretch;">
+            <div style="flex:3;padding-right:1.25rem;">
+                <h3 style="margin:0;">#{rank} {song['title']} - {song['artist']} {warning_html}</h3>
+                <p style="margin:0.35rem 0 0 0;"><b>Score:</b> {row['score']:.2f}</p>
+                <p style="margin:0.35rem 0 0 0;"><b>Why:</b> {row['explanation']}</p>
+            </div>
+            <div style="width:1px;background:rgba(127,127,127,0.15);flex-shrink:0;"></div>
+            <div style="flex:2;min-width:180px;align-self:center;padding-left:1.25rem;">
+                <p style="margin:0 0 0.4rem 0;font-size:0.75rem;opacity:0.6;font-weight:600;letter-spacing:0.5px;">SCORE BREAKDOWN</p>
+                {breakdown_html}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if row["bias_warning"]:
+        st.warning(row["bias_warning"])
 
 
 def make_metrics_payload(user_prefs: Dict, recommendations: List[Dict]) -> Tuple[float, float, Dict[str, float]]:
@@ -223,67 +258,26 @@ def app() -> None:
     }
     st.session_state["user_prefs"] = user_prefs
 
-    if run_clicked:
-        with st.spinner("Generating recommendations..."):
-            st.session_state["recommendations"] = build_recommendations(
-                user_prefs=user_prefs,
-                songs=songs,
-                k=k,
-                use_ai=use_ai,
-                bias_threshold=bias_threshold,
-            )
-    recommendations = st.session_state.get("recommendations", [])
-    if not recommendations:
-        st.info("Set your profile and click 'Generate recommendations'.")
-
     st.subheader("Recommendations")
-    for rank, row in enumerate(recommendations, start=1):
-        song = row["song"]
-        warning_html = (
-            '<span class="bias-pill">Genre Bias Flag</span>' if row["bias_warning"] else ""
-        )
 
-        breakdown = row["breakdown"]
-        total = sum(breakdown.values()) or 1
-
-        def bar(label: str, value: float, color: str) -> str:
-            pct = value / total * 100
-            return (
-                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
-                f'<span style="width:58px;font-size:0.75rem;opacity:0.75;">{label}</span>'
-                f'<div style="flex:1;background:rgba(127,127,127,0.15);border-radius:4px;height:12px;">'
-                f'<div style="width:{pct:.1f}%;background:{color};border-radius:4px;height:100%;"></div>'
-                f'</div>'
-                f'<span style="width:32px;font-size:0.75rem;text-align:right;">{pct:.0f}%</span>'
-                f'</div>'
-            )
-
-        breakdown_html = (
-            bar("Genre",    breakdown["genre"],    "#f472b6") +
-            bar("Mood",     breakdown["mood"],     "#a78bfa") +
-            bar("Energy",   breakdown["energy"],   "#f6ad55") +
-            bar("Acoustic", breakdown["acoustic"], "#2dd4bf")
-        )
-
-        st.markdown(
-            f"""
-            <div class="song-card" style="display:flex;gap:0;align-items:stretch;">
-                <div style="flex:3;padding-right:1.25rem;">
-                    <h3 style="margin:0;">#{rank} {song['title']} - {song['artist']} {warning_html}</h3>
-                    <p style="margin:0.35rem 0 0 0;"><b>Score:</b> {row['score']:.2f}</p>
-                    <p style="margin:0.35rem 0 0 0;"><b>Why:</b> {row['explanation']}</p>
-                </div>
-                <div style="width:1px;background:rgba(127,127,127,0.15);flex-shrink:0;"></div>
-                <div style="flex:2;min-width:180px;align-self:center;padding-left:1.25rem;">
-                    <p style="margin:0 0 0.4rem 0;font-size:0.75rem;opacity:0.6;font-weight:600;letter-spacing:0.5px;">SCORE BREAKDOWN</p>
-                    {breakdown_html}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if row["bias_warning"]:
-            st.warning(row["bias_warning"])
+    if run_clicked:
+        collected: List[Dict] = []
+        status = st.status("Generating recommendations...", expanded=False)
+        for rank, row in enumerate(stream_recommendations(
+            user_prefs=user_prefs, songs=songs, k=k, use_ai=use_ai, bias_threshold=bias_threshold,
+        ), start=1):
+            status.update(label=f"Song {rank} of {k} ready...")
+            _render_card(rank, row)
+            collected.append(row)
+        status.update(label=f"All {k} recommendations ready.", state="complete")
+        st.session_state["recommendations"] = collected
+        recommendations = collected
+    else:
+        recommendations = st.session_state.get("recommendations", [])
+        if not recommendations:
+            st.info("Set your profile and click 'Generate recommendations'.")
+        for rank, row in enumerate(recommendations, start=1):
+            _render_card(rank, row)
 
     if recommendations:
         st.divider()
