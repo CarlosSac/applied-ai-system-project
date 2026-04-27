@@ -1,34 +1,30 @@
 flowchart TD
-    A(["User Profile<br/>genre · mood · energy · acousticness"]) --> SC
-    DS[("Spotify Catalog")] --> SC
+    A(["User Profile<br/>genre · mood · energy · acousticness"]) & DS[("Spotify Catalog")] --> B
 
-    subgraph SC ["⚖️ Scoring Engine"]
+    subgraph SC ["Scoring Engine"]
         B["Genre match · +0.30<br/>Mood match · +0.25<br/>Energy proximity · ×0.25<br/>Acoustic fit · ×0.20"] --> K["Weighted Score + Feature Breakdown"]
     end
 
-    subgraph BD ["🔍 Bias Detection"]
+    subgraph BD ["Bias Detection"]
         K --> BDC{"Genre contribution<br/>exceeds 50% threshold?"}
         BDC -- Yes --> BW["Bias Warning Issued"]
         BDC -- No  --> BN["No Warning"]
     end
 
-    BW --> M
-    BN --> M
-    K  --> M["Top-K Candidates"]
+    BW & BN --> M["Top-K Candidates"]
 
-    subgraph AI ["🤖 Retrieval-Augmented Explanation"]
+    subgraph AI ["Retrieval-Augmented Explanation"]
         M --> P["Prompt Construction<br/>preferences · breakdown · bias signal"]
         P --> R{"Claude API<br/>Available?"}
         R -- Yes --> S["AI-Generated Explanation"]
         R -- No  --> T["Rule-Based Fallback"]
     end
 
-    subgraph EM ["📊 Evaluation Metrics"]
+    subgraph EM ["Evaluation Metrics"]
         M --> EM1["Genre Diversity<br/>Score Spread<br/>Feature Balance"]
     end
 
-    subgraph UI ["🖥️ Streamlit Dashboard"]
-        S   --> Card["Recommendation Card<br/>score · explanation · bias indicator<br/>feature breakdown · Spotify player"]
-        T   --> Card
+    subgraph UI ["Streamlit Dashboard"]
+        S & T --> Card["Recommendation Card<br/>score · explanation · bias indicator<br/>feature breakdown · Spotify player"]
         EM1 --> MP["Metrics Panel + Feature Balance Chart"]
     end
