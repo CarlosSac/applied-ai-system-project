@@ -16,3 +16,7 @@ venv/
 
 # env
 .env
+
+# Data files — not redistributable, generate with data/prepare_spotify.py
+data/songs.csv
+data/dataset.csv
