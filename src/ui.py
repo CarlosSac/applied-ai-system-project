@@ -58,6 +58,8 @@ def stream_recommendations(
 
 
 def _render_card(rank: int, row: Dict) -> None:
+    import html as html_lib
+
     song = row["song"]
     warning_html = (
         '<span class="bias-pill">Genre Bias Flag</span>' if row["bias_warning"] else ""
@@ -84,18 +86,32 @@ def _render_card(rank: int, row: Dict) -> None:
         bar("Acoustic", breakdown["acoustic"], "#2dd4bf")
     )
 
+    spotify_id = song.get("spotify_id", "")
+    spotify_html = (
+        f'<iframe style="margin-top:0.75rem;border-radius:10px;" '
+        f'src="https://open.spotify.com/embed/track/{spotify_id}?utm_source=generator" '
+        f'width="100%" height="80" frameborder="0" '
+        f'allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" '
+        f'loading="lazy"></iframe>'
+    ) if spotify_id else ""
+
+    title       = html_lib.escape(song["title"])
+    artist      = html_lib.escape(song["artist"])
+    explanation = html_lib.escape(row["explanation"].replace("\n", " ").strip())
+
     st.markdown(
         f"""
         <div class="song-card" style="display:flex;gap:0;align-items:stretch;">
             <div style="flex:3;padding-right:1.25rem;">
-                <h3 style="margin:0;">#{rank} {song['title']} - {song['artist']} {warning_html}</h3>
+                <h3 style="margin:0;">#{rank} {title} - {artist} {warning_html}</h3>
                 <p style="margin:0.35rem 0 0 0;"><b>Score:</b> {row['score']:.2f}</p>
-                <p style="margin:0.35rem 0 0 0;"><b>Why:</b> {row['explanation']}</p>
+                <p style="margin:0.35rem 0 0 0;"><b>Why:</b> {explanation}</p>
             </div>
             <div style="width:1px;background:rgba(127,127,127,0.15);flex-shrink:0;"></div>
-            <div style="flex:2;min-width:180px;align-self:center;padding-left:1.25rem;">
+            <div style="flex:2;min-width:180px;padding-left:1.25rem;display:flex;flex-direction:column;justify-content:center;">
                 <p style="margin:0 0 0.4rem 0;font-size:0.75rem;opacity:0.6;font-weight:600;letter-spacing:0.5px;">SCORE BREAKDOWN</p>
                 {breakdown_html}
+                {f'<div style="height:1px;background:rgba(127,127,127,0.15);margin:0.75rem 0;"></div>{spotify_html}' if spotify_html else ""}
             </div>
         </div>
         """,
