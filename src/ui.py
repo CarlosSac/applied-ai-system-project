@@ -224,13 +224,14 @@ def app() -> None:
     st.session_state["user_prefs"] = user_prefs
 
     if run_clicked:
-        st.session_state["recommendations"] = build_recommendations(
-            user_prefs=user_prefs,
-            songs=songs,
-            k=k,
-            use_ai=use_ai,
-            bias_threshold=bias_threshold,
-        )
+        with st.spinner("Generating recommendations..."):
+            st.session_state["recommendations"] = build_recommendations(
+                user_prefs=user_prefs,
+                songs=songs,
+                k=k,
+                use_ai=use_ai,
+                bias_threshold=bias_threshold,
+            )
     recommendations = st.session_state.get("recommendations", [])
     if not recommendations:
         st.info("Set your profile and click 'Generate recommendations'.")
@@ -242,18 +243,45 @@ def app() -> None:
             '<span class="bias-pill">Genre Bias Flag</span>' if row["bias_warning"] else ""
         )
 
+        breakdown = row["breakdown"]
+        total = sum(breakdown.values()) or 1
+
+        def bar(label: str, value: float, color: str) -> str:
+            pct = value / total * 100
+            return (
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+                f'<span style="width:58px;font-size:0.75rem;opacity:0.75;">{label}</span>'
+                f'<div style="flex:1;background:rgba(127,127,127,0.15);border-radius:4px;height:12px;">'
+                f'<div style="width:{pct:.1f}%;background:{color};border-radius:4px;height:100%;"></div>'
+                f'</div>'
+                f'<span style="width:32px;font-size:0.75rem;text-align:right;">{pct:.0f}%</span>'
+                f'</div>'
+            )
+
+        breakdown_html = (
+            bar("Genre",    breakdown["genre"],    "#f472b6") +
+            bar("Mood",     breakdown["mood"],     "#a78bfa") +
+            bar("Energy",   breakdown["energy"],   "#f6ad55") +
+            bar("Acoustic", breakdown["acoustic"], "#2dd4bf")
+        )
+
         st.markdown(
             f"""
-            <div class="song-card">
-                <h3 style="margin:0;">#{rank} {song['title']} - {song['artist']} {warning_html}</h3>
-                <p style="margin:0.35rem 0 0 0;"><b>Score:</b> {row['score']:.2f}</p>
-                <p style="margin:0.35rem 0 0 0;"><b>Genre share:</b> {row['genre_share']:.0%}</p>
-                <p style="margin:0.35rem 0 0 0;"><b>Why:</b> {row['explanation']}</p>
+            <div class="song-card" style="display:flex;gap:0;align-items:stretch;">
+                <div style="flex:3;padding-right:1.25rem;">
+                    <h3 style="margin:0;">#{rank} {song['title']} - {song['artist']} {warning_html}</h3>
+                    <p style="margin:0.35rem 0 0 0;"><b>Score:</b> {row['score']:.2f}</p>
+                    <p style="margin:0.35rem 0 0 0;"><b>Why:</b> {row['explanation']}</p>
+                </div>
+                <div style="width:1px;background:rgba(127,127,127,0.15);flex-shrink:0;"></div>
+                <div style="flex:2;min-width:180px;align-self:center;padding-left:1.25rem;">
+                    <p style="margin:0 0 0.4rem 0;font-size:0.75rem;opacity:0.6;font-weight:600;letter-spacing:0.5px;">SCORE BREAKDOWN</p>
+                    {breakdown_html}
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-
         if row["bias_warning"]:
             st.warning(row["bias_warning"])
 
@@ -269,13 +297,32 @@ def app() -> None:
         metric_col3.metric("Top Feature Share", f"{top_feature}: {balance.get(top_feature, 0.0):.0%}")
 
         st.subheader("Feature Balance")
-        pretty_balance = {
-            "Genre": balance.get("genre", 0.0),
-            "Mood": balance.get("mood", 0.0),
-            "Energy": balance.get("energy", 0.0),
-            "Acoustic": balance.get("acoustic", 0.0),
-        }
-        st.bar_chart(pretty_balance)
+        import plotly.graph_objects as go
+        features = ["Genre", "Mood", "Energy", "Acoustic"]
+        bal_values = [
+            balance.get("genre", 0.0),
+            balance.get("mood", 0.0),
+            balance.get("energy", 0.0),
+            balance.get("acoustic", 0.0),
+        ]
+        bal_colors = ["#f472b6", "#a78bfa", "#f6ad55", "#2dd4bf"]
+        bal_fig = go.Figure(go.Bar(
+            x=features,
+            y=bal_values,
+            marker_color=bal_colors,
+            text=[f"{v:.0%}" for v in bal_values],
+            textposition="outside",
+        ))
+        bal_fig.update_layout(
+            height=280,
+            margin=dict(l=0, r=0, t=8, b=0),
+            yaxis=dict(tickformat=".0%", range=[0, max(bal_values) * 1.25]),
+            xaxis=dict(tickfont=dict(size=13)),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            showlegend=False,
+        )
+        st.plotly_chart(bal_fig, use_container_width=True, config={"displayModeBar": False})
 
 
 if __name__ == "__main__":
