@@ -185,18 +185,23 @@ def generate_explanation(
 
         client = anthropic.Anthropic(api_key=api_key)
 
+        bias_instruction = (
+            f"\n⚠️ REQUIRED: Your explanation MUST include this bias warning verbatim or paraphrased:\n"
+            f'"{bias_warning}"\n'
+        ) if bias_warning else ""
+
         prompt = (
-            "You are explaining why a music recommender selected a song. "
-            "Write 1-2 concise sentences in plain English. "
-            "Reference the strongest contributing features and the overall score. "
-            "Do not invent features.\n\n"
+            "You are explaining why a music recommender selected a song.\n"
+            f"{bias_instruction}"
+            "Write 2-3 sentences in plain English. Do not use markdown formatting.\n"
+            "- Mention the strongest contributing features and the total score.\n"
+            + ("- Explicitly state the bias warning above.\n" if bias_warning else "")
+            + "Do not invent features.\n\n"
             f"User preferences: {user_prefs}\n"
             f"Song metadata: {song}\n"
             f"Weighted score breakdown: {breakdown}\n"
             f"Rule traces: {reasons}\n"
             f"Total score: {score:.2f}\n"
-            f"Bias warning: {bias_warning or 'none'}\n"
-            "If a bias warning is present, explicitly mention it in the explanation.\n"
         )
 
         message = client.messages.create(
@@ -206,7 +211,9 @@ def generate_explanation(
         )
         llm_text = message.content[0].text
         if isinstance(llm_text, str) and llm_text.strip():
-            return llm_text.strip()
+            import re
+            cleaned = re.sub(r'\*\*(.+?)\*\*', r'\1', llm_text.strip())
+            return cleaned
         return fallback
     except Exception as exc:
         print(f"[Claude] unavailable: {type(exc).__name__}: {exc}")
@@ -257,6 +264,7 @@ def load_songs(csv_path: str) -> List[Dict]:
                 "artist":       row["artist"],
                 "genre":        row["genre"],
                 "mood":         row["mood"],
+                "spotify_id":   row.get("spotify_id", ""),
                 "energy":       float(row["energy"]),
                 "tempo_bpm":    float(row["tempo_bpm"]),
                 "valence":      float(row["valence"]),
