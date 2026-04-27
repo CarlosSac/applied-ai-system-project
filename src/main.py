@@ -9,7 +9,7 @@ You will implement the functions in recommender.py:
 - recommend_songs
 """
 
-from src.recommender import load_songs, recommend_songs, check_claude_health
+from src.recommender import load_songs, recommend_songs, check_claude_health, print_metrics
 
 
 PROFILES = {
@@ -94,6 +94,8 @@ def main() -> None:
             print(f"       Score : {score:.2f}")
             print(f"       Why   : {explanation}")
 
+        print()
+        print_metrics(user_prefs, recommendations)
         print()
 
 

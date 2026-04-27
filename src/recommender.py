@@ -323,3 +323,55 @@ def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tup
         )
         results.append((song, score, explanation))
     return results
+
+
+def genre_diversity(recommendations: List[Tuple[Dict, float, str]]) -> float:
+    """Unique genres in top-k divided by k."""
+    if not recommendations:
+        return 0.0
+    genres = {song["genre"] for song, _, _ in recommendations}
+    return len(genres) / len(recommendations)
+
+
+def score_spread(recommendations: List[Tuple[Dict, float, str]]) -> float:
+    """Standard deviation of scores across top-k recommendations."""
+    if len(recommendations) < 2:
+        return 0.0
+    scores = [score for _, score, _ in recommendations]
+    mean = sum(scores) / len(scores)
+    variance = sum((s - mean) ** 2 for s in scores) / len(scores)
+    return variance ** 0.5
+
+
+def feature_balance(
+    user_prefs: Dict,
+    recommendations: List[Tuple[Dict, float, str]],
+) -> Dict[str, float]:
+    """Average contribution share per feature across top-k recommendations."""
+    if not recommendations:
+        return {}
+    totals: Dict[str, float] = {"genre": 0.0, "mood": 0.0, "energy": 0.0, "acoustic": 0.0}
+    counted = 0
+    for song, _, _ in recommendations:
+        breakdown = _score_breakdown(user_prefs, song)
+        total_score = sum(breakdown.values())
+        if total_score > 0:
+            for feature, value in breakdown.items():
+                totals[feature] += value / total_score
+            counted += 1
+    if counted == 0:
+        return totals
+    return {f: v / counted for f, v in totals.items()}
+
+
+def print_metrics(
+    user_prefs: Dict,
+    recommendations: List[Tuple[Dict, float, str]],
+) -> None:
+    """Prints a metrics summary for one profile run."""
+    diversity = genre_diversity(recommendations)
+    spread = score_spread(recommendations)
+    balance = feature_balance(user_prefs, recommendations)
+    balance_str = "  ".join(f"{f}: {v:.0%}" for f, v in balance.items())
+    print(f"  [Metrics] Diversity: {diversity:.2f}  |  Spread: {spread:.3f}")
+    print(f"  [Metrics] Balance  : {balance_str}")
