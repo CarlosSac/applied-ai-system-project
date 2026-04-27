@@ -9,29 +9,29 @@ You will implement the functions in recommender.py:
 - recommend_songs
 """
 
-from src.recommender import load_songs, recommend_songs
+from src.recommender import load_songs, recommend_songs, check_claude_health
 
 
 PROFILES = {
     # --- Standard profiles ---
-    "High-Energy Pop": {
-        "genre": "pop",
-        "mood": "happy",
-        "energy": 0.90,
-        "likes_acoustic": False,
-    },
-    "Chill Lofi": {
-        "genre": "lofi",
-        "mood": "chill",
-        "energy": 0.35,
-        "likes_acoustic": True,
-    },
-    "Deep Intense Rock": {
-        "genre": "rock",
-        "mood": "intense",
-        "energy": 0.95,
-        "likes_acoustic": False,
-    },
+    # "High-Energy Pop": {
+    #     "genre": "pop",
+    #     "mood": "happy",
+    #     "energy": 0.90,
+    #     "likes_acoustic": False,
+    # },
+    # "Chill Lofi": {
+    #     "genre": "lofi",
+    #     "mood": "chill",
+    #     "energy": 0.35,
+    #     "likes_acoustic": True,
+    # },
+    # "Deep Intense Rock": {
+    #     "genre": "rock",
+    #     "mood": "intense",
+    #     "energy": 0.95,
+    #     "likes_acoustic": False,
+    # },
 
     # --- Edge case profiles ---
 
@@ -78,6 +78,7 @@ PROFILES = {
 
 
 def main() -> None:
+    check_claude_health()
     songs = load_songs("data/songs.csv")
 
     for profile_name, user_prefs in PROFILES.items():
