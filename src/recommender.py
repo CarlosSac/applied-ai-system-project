@@ -1,5 +1,21 @@
+import os
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
+
+_env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=_env_path)
+except ImportError:
+    # python-dotenv not installed: parse .env manually
+    if os.path.isfile(_env_path):
+        with open(_env_path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    os.environ.setdefault(_k.strip(), _v.strip())
 
 @dataclass
 class Song:
@@ -91,6 +107,139 @@ class Recommender:
 
         return "; ".join(parts) + "."
 
+
+def _score_breakdown(user_prefs: Dict, song: Dict) -> Dict[str, float]:
+    """
+    Returns weighted contribution per feature.
+    """
+    breakdown = {
+        "genre": 0.0,
+        "mood": 0.0,
+        "energy": 0.0,
+        "acoustic": 0.0,
+    }
+
+    if song["genre"] == user_prefs.get("genre"):
+        breakdown["genre"] = 0.30
+
+    if song["mood"] == user_prefs.get("mood"):
+        breakdown["mood"] = 0.25
+
+    if "energy" in user_prefs:
+        breakdown["energy"] = (1 - abs(song["energy"] - user_prefs["energy"])) * 0.25
+
+    if "likes_acoustic" in user_prefs:
+        raw = song["acousticness"] if user_prefs["likes_acoustic"] else (1 - song["acousticness"])
+        breakdown["acoustic"] = raw * 0.20
+
+    return breakdown
+
+
+def detect_genre_bias(
+    breakdown: Dict[str, float],
+    total_score: float,
+    threshold: float = 0.50,
+) -> Tuple[bool, float, Optional[str]]:
+    """
+    Flags when genre contribution dominates the final score.
+    """
+    if total_score <= 0:
+        return False, 0.0, None
+
+    genre_share = breakdown.get("genre", 0.0) / total_score
+    if genre_share > threshold:
+        warning = (
+            f"Bias warning: genre contributes {genre_share:.0%} of total score "
+            f"(threshold {threshold:.0%})."
+        )
+        return True, genre_share, warning
+
+    return False, genre_share, None
+
+
+def generate_explanation(
+    user_prefs: Dict,
+    song: Dict,
+    score: float,
+    reasons: List[str],
+    breakdown: Dict[str, float],
+    bias_warning: Optional[str] = None,
+    use_ai: bool = True,
+) -> str:
+    """
+    Generates an explanation with Gemini if configured.
+    Falls back to deterministic rule-based text when unavailable.
+    """
+    fallback = f"score {score:.2f}: " + ", ".join(reasons)
+    if bias_warning:
+        fallback += f" | {bias_warning}"
+    if not use_ai:
+        return fallback
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return fallback
+
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        prompt = (
+            "You are explaining why a music recommender selected a song. "
+            "Write 1-2 concise sentences in plain English. "
+            "Reference the strongest contributing features and the overall score. "
+            "Do not invent features.\n\n"
+            f"User preferences: {user_prefs}\n"
+            f"Song metadata: {song}\n"
+            f"Weighted score breakdown: {breakdown}\n"
+            f"Rule traces: {reasons}\n"
+            f"Total score: {score:.2f}\n"
+            f"Bias warning: {bias_warning or 'none'}\n"
+            "If a bias warning is present, explicitly mention it in the explanation.\n"
+        )
+
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        llm_text = message.content[0].text
+        if isinstance(llm_text, str) and llm_text.strip():
+            return llm_text.strip()
+        return fallback
+    except Exception as exc:
+        print(f"[Claude] unavailable: {type(exc).__name__}: {exc}")
+        return fallback
+
+def check_claude_health() -> bool:
+    """
+    Sends a minimal prompt to verify the API key and quota are functional.
+    Call once at startup before running recommendations.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        print("[Claude] ANTHROPIC_API_KEY not set — will use rule-based fallback.")
+        return False
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Reply with the single word: ok"}],
+        )
+        text = message.content[0].text.strip().lower()
+        if text:
+            print(f"[Claude] health check passed (response: '{text}')")
+            return True
+        print("[Claude] health check returned empty response — will use fallback.")
+        return False
+    except Exception as exc:
+        print(f"[Claude] health check failed: {type(exc).__name__}: {exc}")
+        return False
+
+
 def load_songs(csv_path: str) -> List[Dict]:
     """
     Loads songs from a CSV file.
@@ -121,32 +270,28 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     Scores a single song against a user profile.
     Returns a total score (0.0 – 1.0) and a list of reasons explaining each contribution.
     """
-    score = 0.0
+    breakdown = _score_breakdown(user_prefs, song)
+    score = sum(breakdown.values())
     reasons = []
 
     # Genre match: worth 0.30
-    if song["genre"] == user_prefs.get("genre"):
-        score += 0.30
+    if breakdown["genre"] > 0:
         reasons.append(f"genre match (+0.30)")
 
     # Mood match: worth 0.25
-    if song["mood"] == user_prefs.get("mood"):
-        score += 0.25
+    if breakdown["mood"] > 0:
         reasons.append(f"mood match (+0.25)")
 
     # Energy closeness: worth up to 0.25
     # The closer song.energy is to the target, the higher the contribution
     if "energy" in user_prefs:
-        energy_contribution = (1 - abs(song["energy"] - user_prefs["energy"])) * 0.25
-        score += energy_contribution
+        energy_contribution = breakdown["energy"]
         reasons.append(f"energy match (+{energy_contribution:.2f})")
 
     # Acoustic fit: worth up to 0.20
     # If user likes acoustic, reward high acousticness; otherwise reward low acousticness
     if "likes_acoustic" in user_prefs:
-        raw = song["acousticness"] if user_prefs["likes_acoustic"] else (1 - song["acousticness"])
-        acoustic_contribution = raw * 0.20
-        score += acoustic_contribution
+        acoustic_contribution = breakdown["acoustic"]
         reasons.append(f"acoustic fit (+{acoustic_contribution:.2f})")
 
     return score, reasons
@@ -157,9 +302,24 @@ def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tup
     Functional implementation of the recommendation logic.
     Required by src/main.py
     """
-    scored = [
-        (song, *score_song(user_prefs, song))
-        for song in songs
-    ]
+    scored = []
+    for song in songs:
+        breakdown = _score_breakdown(user_prefs, song)
+        score = sum(breakdown.values())
+        _, reasons = score_song(user_prefs, song)
+        _, _, bias_warning = detect_genre_bias(breakdown, score)
+        scored.append((song, score, reasons, breakdown, bias_warning))
+
     ranked = sorted(scored, key=lambda x: x[1], reverse=True)
-    return [(song, score, ", ".join(reasons)) for song, score, reasons in ranked[:k]]
+    results = []
+    for song, score, reasons, breakdown, bias_warning in ranked[:k]:
+        explanation = generate_explanation(
+            user_prefs,
+            song,
+            score,
+            reasons,
+            breakdown,
+            bias_warning=bias_warning,
+        )
+        results.append((song, score, explanation))
+    return results
