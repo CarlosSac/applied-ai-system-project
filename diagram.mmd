@@ -1,31 +1,34 @@
 flowchart TD
-    A([User Preferences<br/>genre · mood · energy · acoustic]) --> B[For each song in catalog<br/>compute a match score]
+    A(["User Profile<br/>genre · mood · energy · acousticness"]) --> SC
+    DS[("Spotify Catalog")] --> SC
 
-    subgraph Scoring_Logic [Scoring Logic]
-        direction TB
-        B --> C{Genre match?}
-        
-        C -- Yes --> D[+0.30]
-        C -- No --> E[+0.00]
-
-        D --> F{Mood match?}
-        E --> F
-
-        F -- Yes --> G[+0.25]
-        F -- No --> H[+0.00]
-        
-        G --> I[Energy closeness * 0.25]
-        H --> I
+    subgraph SC ["⚖️ Scoring Engine"]
+        B["Genre match · +0.30<br/>Mood match · +0.25<br/>Energy proximity · ×0.25<br/>Acoustic fit · ×0.20"] --> K["Weighted Score + Feature Breakdown"]
     end
 
-    subgraph Final_Refinement [Final Refinement]
-        I --> J[Acoustic fit * 0.20]
-        J --> K[Total score 0.0 to 1.0]
+    subgraph BD ["🔍 Bias Detection"]
+        K --> BDC{"Genre contribution<br/>exceeds 50% threshold?"}
+        BDC -- Yes --> BW["Bias Warning Issued"]
+        BDC -- No  --> BN["No Warning"]
     end
 
-    subgraph Output [Recommendations]
-        K --> L[Rank all songs by score]
-        L --> M([Top K Recommendations])
+    BW --> M
+    BN --> M
+    K  --> M["Top-K Candidates"]
+
+    subgraph AI ["🤖 Retrieval-Augmented Explanation"]
+        M --> P["Prompt Construction<br/>preferences · breakdown · bias signal"]
+        P --> R{"Claude API<br/>Available?"}
+        R -- Yes --> S["AI-Generated Explanation"]
+        R -- No  --> T["Rule-Based Fallback"]
     end
 
-    
+    subgraph EM ["📊 Evaluation Metrics"]
+        M --> EM1["Genre Diversity<br/>Score Spread<br/>Feature Balance"]
+    end
+
+    subgraph UI ["🖥️ Streamlit Dashboard"]
+        S   --> Card["Recommendation Card<br/>score · explanation · bias indicator<br/>feature breakdown · Spotify player"]
+        T   --> Card
+        EM1 --> MP["Metrics Panel + Feature Balance Chart"]
+    end
