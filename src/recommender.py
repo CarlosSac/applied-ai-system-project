@@ -38,12 +38,58 @@ class Recommender:
         self.songs = songs
 
     def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
-        # TODO: Implement recommendation logic
-        return self.songs[:k]
+        user_prefs = {
+            "genre": user.favorite_genre,
+            "mood": user.favorite_mood,
+            "energy": user.target_energy,
+            "likes_acoustic": user.likes_acoustic,
+        }
+
+        scored_songs = []
+        for song in self.songs:
+            song_dict = {
+                "id": song.id,
+                "title": song.title,
+                "artist": song.artist,
+                "genre": song.genre,
+                "mood": song.mood,
+                "energy": song.energy,
+                "tempo_bpm": song.tempo_bpm,
+                "valence": song.valence,
+                "danceability": song.danceability,
+                "acousticness": song.acousticness,
+            }
+            score, _ = score_song(user_prefs, song_dict)
+            scored_songs.append((song, score))
+
+        ranked = sorted(scored_songs, key=lambda x: x[1], reverse=True)
+        return [song for song, _ in ranked[:k]]
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
-        # TODO: Implement explanation logic
-        return "Explanation placeholder"
+        parts = []
+
+        if song.genre == user.favorite_genre:
+            parts.append(f"genre matches your preference ({user.favorite_genre})")
+        else:
+            parts.append(f"genre differs from your preference ({user.favorite_genre})")
+
+        if song.mood == user.favorite_mood:
+            parts.append(f"mood matches your preference ({user.favorite_mood})")
+        else:
+            parts.append(f"mood differs from your preference ({user.favorite_mood})")
+
+        energy_gap = abs(song.energy - user.target_energy)
+        parts.append(f"energy is {song.energy:.2f} vs target {user.target_energy:.2f} (gap {energy_gap:.2f})")
+
+        if user.likes_acoustic:
+            parts.append(f"acousticness is {song.acousticness:.2f}, which helps for acoustic taste")
+        else:
+            non_acoustic_fit = 1 - song.acousticness
+            parts.append(
+                f"acousticness is {song.acousticness:.2f}, so non-acoustic fit is {non_acoustic_fit:.2f}"
+            )
+
+        return "; ".join(parts) + "."
 
 def load_songs(csv_path: str) -> List[Dict]:
     """
