@@ -1,4 +1,4 @@
-from src.recommender import Song, UserProfile, Recommender
+from src.recommender import Song, UserProfile, Recommender, detect_genre_bias, generate_explanation
 
 def make_small_recommender() -> Recommender:
     songs = [
@@ -59,3 +59,50 @@ def test_explain_recommendation_returns_non_empty_string():
     explanation = rec.explain_recommendation(user, song)
     assert isinstance(explanation, str)
     assert explanation.strip() != ""
+
+
+def test_detect_genre_bias_flags_dominant_genre_share():
+    breakdown = {
+        "genre": 0.30,
+        "mood": 0.00,
+        "energy": 0.10,
+        "acoustic": 0.10,
+    }
+    total = sum(breakdown.values())
+
+    is_biased, share, warning = detect_genre_bias(breakdown, total)
+
+    assert is_biased is True
+    assert share > 0.50
+    assert warning is not None
+    assert "Bias warning" in warning
+
+
+def test_generate_explanation_includes_bias_warning_in_fallback():
+    explanation = generate_explanation(
+        user_prefs={"genre": "pop", "mood": "happy", "energy": 0.8, "likes_acoustic": False},
+        song={"title": "x", "genre": "pop", "mood": "happy", "energy": 0.8, "acousticness": 0.2},
+        score=0.60,
+        reasons=["genre match (+0.30)", "energy match (+0.20)", "acoustic fit (+0.10)"],
+        breakdown={"genre": 0.30, "mood": 0.00, "energy": 0.20, "acoustic": 0.10},
+        bias_warning="Bias warning: genre contributes 50% of total score.",
+        use_ai=False,
+    )
+
+    assert "Bias warning" in explanation
+
+
+def test_detect_genre_bias_no_flag_when_genre_share_is_low():
+    breakdown = {
+        "genre": 0.30,
+        "mood": 0.25,
+        "energy": 0.22,
+        "acoustic": 0.18,
+    }
+    total = sum(breakdown.values())
+
+    is_biased, share, warning = detect_genre_bias(breakdown, total)
+
+    assert is_biased is False
+    assert share <= 0.50
+    assert warning is None
