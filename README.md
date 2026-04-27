@@ -1,243 +1,216 @@
-# 🎵 Music Recommender Simulation
+# Music Recommender Studio
 
-## Project Summary
+## Original Project - Module 3: Music Recommender
 
-In this project you will build and explain a small music recommender system.
+This project builds on the Module 3 Music Recommender, a rule-based system that scores songs against a user taste profile across four weighted features: genre, mood, energy, and acousticness. The original system produced ranked recommendations and deterministic text explanations, but had no AI-generated reasoning, no bias awareness, and no evaluation metrics. This final version extends that foundation into a full applied AI system.
 
-Your goal is to:
+---
 
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
+## Title and Summary
 
-Real-world recommenders like Spotify or YouTube learn from massive behavioral datasets (plays, skips, likes) to determine what a user wants next. My version focuses in the core functions: instead of learning from behavior, my recommender define a user's taste explicitly through a profile (preferred genre, mood, energy level, and acoustic preference), then score every song by how closely it matches. This makes the system transparent and easy to trace, at the cost of personalization depth. The priority here is interpretability and correctness of the scoring logic over scale or surprise.
+**Music Recommender Studio** is a profile-driven music recommendation system that combines deterministic scoring with AI-generated explanations, bias detection, and evaluation metrics, all surfaced through an interactive Streamlit dashboard.
 
-## How The System Works
+Users define a taste profile (preferred genre, mood, energy level, and acoustic preference), and the system scores every song in a real Spotify catalog, ranks the top matches, flags potential genre-bias in the scoring, and uses Claude (Anthropic's AI model) to generate a plain-English explanation for each recommendation. Evaluation metrics (genre diversity, score spread, and feature balance) are computed and displayed after every run.
 
-**What features does each `Song` use?**
+The system matters because it demonstrates how transparency and guardrails can be built into an AI pipeline: every recommendation is explainable, every bias is surfaced, and every fallback is handled gracefully.
 
-Each song carries four attributes used in scoring: `genre` and `mood` (categorical) act as the primary filters, while `energy` and `acousticness` (both 0.0 to 1.0) fine-tune the match. The remaining fields (`valence`, `danceability`, `tempo_bpm`) are stored on the song but not yet factored into the score.
+---
 
-**What does the `UserProfile` store?**
+## Architecture Overview
 
-The user is represented as a static taste profile with four fields that mirror the song attributes used in scoring:
-
-```python
-user_prefs = {
-    "genre": "pop",
-    "mood": "happy",
-    "energy": 0.8,
-    "likes_acoustic": False
-}
+```
+User Profile + Spotify Catalog
+        ↓
+   Scoring Engine          (genre ×0.30, mood ×0.25, energy ×0.25, acoustic ×0.20)
+        ↓
+   Bias Detection          (flags genre contribution > 50% of total score)
+        ↓
+   Top-K Ranking
+        ↓
+   AI Explanation          (Claude Haiku via Anthropic API, with rule-based fallback if unavailable)
+        ↓
+   Evaluation Metrics      (diversity, spread, feature balance)
+        ↓
+   Streamlit Dashboard     (cards + breakdown bars + Spotify player + metrics chart)
 ```
 
-**How does the `Recommender` compute a score?**
+See [diagram.mmd](diagram.mmd) for the full system diagram.
 
-For each song, it adds up weighted points based on how well the song matches the profile:
+The pipeline is retrieval-augmented: before Claude generates an explanation, it receives the song metadata, the weighted score breakdown, the rule traces, and any bias warning as structured context. Claude's output is grounded in that retrieved data and cannot invent features that are not there. If the API is unavailable, the system falls back to deterministic rule-based text so recommendations always display.
 
-| Rule                                                | Weight |
-| --------------------------------------------------- | ------ |
-| Genre matches user's preferred genre                | 0.30   |
-| Mood matches user's preferred mood                  | 0.25   |
-| `(1 - abs(song.energy - user.energy))`              | 0.25   |
-| Acoustic fit (`acousticness` or `1 - acousticness`) | 0.20   |
+---
 
-**How are songs chosen?**
+## Setup Instructions
 
-All songs are scored, sorted in descending order, and the top `k` (default 5) are returned along with a short explanation of why each one ranked where it did.
+### 1. Clone the repository
 
-**Potential biases to expect**
+```bash
+git clone https://github.com/CarlosSac/applied-ai-system-final
+cd applied-ai-system-final
+```
 
-Genre carries the single largest weight (0.30), so a song that perfectly matches mood, energy, and acousticness but differs in genre will almost always lose to a genre-match with weaker other scores. The system may also under-serve users whose taste crosses genre lines, since it treats genre as a binary yes/no rather than a spectrum.
-**Diagram**
+### 2. Create and activate a virtual environment
 
-<img src="docs/diagram.png" alt="Diagram">
+```bash
+python -m venv .venv
 
-**Output**
+# Windows
+.venv\Scripts\activate
 
-<img src="docs/output.png" width="600" alt="Output">
+# Mac / Linux
+source .venv/bin/activate
+```
 
-**More profiles**
-
-<img src="docs/other.png" width="600" alt="Output">
-
-## Getting Started
-
-### Setup
-
-1. Create a virtual environment (optional but recommended):
-
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate      # Mac or Linux
-    .venv\Scripts\activate         # Windows
-
-    ```
-
-2. Install dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Run the app:
+### 4. Add your Anthropic API key
+
+Create a `.env` file in the project root:
+
+```
+ANTHROPIC_API_KEY=your_api_key_here
+```
+
+Get a key at [console.anthropic.com](https://console.anthropic.com).
+
+### 5. Prepare the song catalog
+
+Download the Spotify Tracks Dataset from Kaggle (`maharshipandya/spotify-tracks-dataset`) and place the CSV in `data/`. Then run:
+
+```bash
+python data/prepare_spotify.py --input data/dataset.csv --output data/songs.csv --limit 500
+```
+
+This samples up to 500 songs evenly across all genres and derives mood from valence and energy.
+
+### 6. Run the CLI
 
 ```bash
 python -m src.main
 ```
 
-### Running Tests
+### 7. Run the Streamlit UI
 
-Run the starter tests with:
+```bash
+streamlit run src/ui.py
+```
+
+### 8. Run tests
 
 ```bash
 pytest
 ```
 
-You can add more tests in `tests/test_recommender.py`.
+---
+
+## Sample Interactions
+
+### Example 1 - High-Energy Pop (genre + mood match, no bias)
+
+**Profile:** genre=pop, mood=happy, energy=0.90, likes_acoustic=False
+
+**Output:**
+```
+#1  Levitating – Dua Lipa
+    Score : 0.93
+    Why   : This track was selected with a score of 0.93, driven by a strong
+            genre match with pop and a mood alignment with your happy preference.
+            The high energy level of 0.88 closely matches your target of 0.90,
+            contributing significantly to the overall score.
+```
+
+**Metrics:** Diversity: 0.33 | Spread: 0.041 | Top feature: genre (34%)
 
 ---
 
-## Experiments You Tried
+### Example 2 - Ghost Genre (genre not in catalog, bias detected)
 
-Seven user profiles were tested in total. Three were straightforward (High-Energy Pop, Chill Lofi, Deep Intense Rock). Four were designed to break or stress the system.
+**Profile:** genre=metal, mood=intense, energy=0.92, likes_acoustic=False
 
-**Sad but Hype:** genre=pop, mood=sad, energy=0.9. No pop/sad song exists in the catalog, so the mood weight was always wasted. The top result had no mood match at all.
+**Output:**
+```
+#1  Killing in the Name – Rage Against the Machine
+    Score : 0.50
+    Why   : This song scored 0.50 primarily because of its intense mood alignment
+            and high energy match at 0.91. Note: genre contributes 60% of the
+            total score, exceeding the 50% threshold. This recommendation relies
+            heavily on genre similarity rather than a balanced mix of features.
 
-**Ghost Genre:** genre=metal, which is not in the catalog. The system fell back to mood and energy only. Every song scored at most 0.69 instead of the usual 0.94+.
+    ⚠ Bias warning: genre contributes 60% of total score (threshold 50%).
+```
 
-**Acoustic Chaos:** genre=folk, mood=nostalgic, energy=0.95. Folk songs are naturally low energy, so the system recommended a song that matched genre and mood but directly contradicted the energy target. Genre and mood won over energy.
-
-**Middle of the Road:** genre=jazz, energy=0.5. One perfect match scored 0.95, then second place dropped to 0.38. Having only one jazz song in the catalog made the results very uneven.
+**Metrics:** Diversity: 1.00 | Spread: 0.217 | Top feature: genre (60%)
 
 ---
 
-## Limitations and Risks
+### Example 3 - Chill Lofi (balanced scoring, low spread)
 
-- Genre is the biggest single weight. A song from the wrong genre will almost always lose, even if everything else matches.
-- If a genre or mood is not in the catalog, those weights are wasted. A user looking for metal or country gets nothing useful.
-- The catalog only has 15 songs. Results are heavily shaped by which genres have more entries — lofi users get 3 matches, most others get 1.
-- Tempo, valence, danceability, and lyrics are ignored. Two songs in the same genre can sound completely different and still score the same.
-- The system treats every user with the same fixed weights. Someone who cares a lot about energy but not genre has no way to say that.
+**Profile:** genre=lofi, mood=chill, energy=0.35, likes_acoustic=True
+
+**Output:**
+```
+#1  Snowfall – Øneheart
+    Score : 0.91
+    Why   : Snowfall earns a high score of 0.91 through strong alignment across
+            all four features: genre, chill mood, low energy, and
+            high acousticness, resulting in a well-balanced recommendation
+            without over-reliance on any single attribute.
+```
+
+**Metrics:** Diversity: 0.67 | Spread: 0.028 | Top feature: acoustic (24%)
+
+---
+
+## Design Decisions
+
+**Why deterministic scoring instead of a learned model?**
+Transparency was the priority. Every score is fully traceable to a weighted sum with no hidden embeddings or black-box outputs. This makes bias detection straightforward: if genre contributes more than 50% of the total score, the system can flag it and communicate it clearly.
+
+**Why Claude for explanations?**
+The explanation module follows a RAG pattern: structured context (score breakdown, rule traces, bias signal) is retrieved and injected into a prompt before Claude generates a response. This keeps Claude grounded and unable to fabricate features, while producing natural language that is more readable than template strings.
+
+**Why a fallback?**
+API availability is not guaranteed. The system always produces output. If Claude is unreachable or over quota, the deterministic fallback generates a readable explanation from the rule traces. This makes the system production-reliable without requiring a live API connection.
+
+**Why sample evenly across genres?**
+The original catalog had 15 hand-crafted songs. The Kaggle dataset is sorted alphabetically by genre, so a naive `--limit 200` would return only acoustic songs. The `prepare_spotify.py` script groups by genre and samples evenly to ensure catalog diversity, which directly affects diversity metrics and recommendation quality.
+
+**Trade-offs made:**
+- Fixed weights mean users cannot express that they care more about energy than genre. A future version could expose weight sliders.
+- Mood is derived from valence and energy thresholds, not labeled by humans. Edge cases exist.
+- One Claude API call per recommendation means 3 songs = 3 sequential requests. This is slow but keeps the code simple and the cost low.
+
+---
+
+## Testing Summary
+
+**What worked:**
+- All 10 pytest tests pass, covering scoring logic, bias detection (both flagged and non-flagged cases), fallback explanation generation, and all three evaluation metric functions.
+- The bias detection correctly flags genre-heavy recommendations and injects the warning into Claude's prompt, which then surfaces it in plain English.
+- The health check at startup reliably diagnoses API key issues before running recommendations.
+- Progressive rendering in the UI (one card at a time as Claude responds) significantly improves perceived performance.
+
+**What did not work initially:**
+- Gemini API (original provider) had a quota limit of 0 on the free tier; the project switched to Anthropic Claude.
+- Silent exception handling in `generate_explanation` hid all API errors. Adding diagnostic print statements immediately identified the issue.
+- Streamlit's `st.markdown` strips JavaScript, so Plotly charts cannot be embedded via `to_html()`; replaced with pure CSS/HTML progress bars for the in-card breakdown.
+- Newlines in Claude's response broke the HTML card structure; fixed by stripping newlines before inserting explanation text into HTML.
+
+**What was learned:**
+- LLM outputs require sanitization before embedding in HTML: special characters, markdown formatting (`**bold**`), and newlines all need handling.
+- Caching (`@st.cache_data`) masks data updates; after regenerating the CSV, the Streamlit cache must be cleared manually.
+- The "reliability" requirement is met not just by tests but by the combination of health checks, fallback logic, bias guardrails, and evaluation metrics working together.
 
 ---
 
 ## Reflection
 
-[**Model Card**](model_card.md)
+Building this project made the gap between "correct by the formula" and "actually useful" very concrete. The scoring rules are transparent and traceable, but that transparency also exposes their limits: a user who wants high-energy folk gets a song that matches genre and mood but directly contradicts their energy target, because genre and mood together outweigh the energy penalty. The system is honest about this through the bias detection, but honesty does not fix the underlying limitation.
 
-Write 1 to 2 paragraphs here about what you learned:
+Integrating Claude changed how the explanations feel without changing what the system knows. The AI did not add new information; it received the same breakdown the rule-based fallback uses, but communicated it in a way that felt more human and contextually aware. That distinction matters: AI here is an interface layer, not the reasoning layer. The reasoning is the scoring logic. Keeping those two roles separate made the system easier to test, easier to debug, and easier to trust.
 
-Building this made it clear how much a recommender depends on its data, not just its logic. The scoring rules made sense on paper, but the results were only as good as the catalog behind them. A user looking for metal or country got nothing useful, not because the algorithm was wrong, but because those genres simply were not there.
-
-The most surprising result came from the Acoustic Chaos profile. The system recommended a folk song to a user who wanted high energy, just because genre and mood matched. It was technically correct by the scoring rules, but it is wrong. That gap between "correct by the formula" and "actually useful" is probably the most important thing from the project. Real recommenders have to deal with that gap at a much larger scale.
-
-## 7. `model_card_template.md`
-
-Combines reflection and model card framing from the Module 3 guidance. :contentReference[oaicite:2]{index=2}
-
-```markdown
-# 🎧 Model Card - Music Recommender Simulation
-
-## 1. Model Name
-
-Give your recommender a name, for example:
-
-> VibeFinder 1.0
-
----
-
-## 2. Intended Use
-
-- What is this system trying to do
-- Who is it for
-
-Example:
-
-> This model suggests 3 to 5 songs from a small catalog based on a user's preferred genre, mood, and energy level. It is for classroom exploration only, not for real users.
-
----
-
-## 3. How It Works (Short Explanation)
-
-Describe your scoring logic in plain language.
-
-- What features of each song does it consider
-- What information about the user does it use
-- How does it turn those into a number
-
-Try to avoid code in this section, treat it like an explanation to a non programmer.
-
----
-
-## 4. Data
-
-Describe your dataset.
-
-- How many songs are in `data/songs.csv`
-- Did you add or remove any songs
-- What kinds of genres or moods are represented
-- Whose taste does this data mostly reflect
-
----
-
-## 5. Strengths
-
-Where does your recommender work well
-
-You can think about:
-
-- Situations where the top results "felt right"
-- Particular user profiles it served well
-- Simplicity or transparency benefits
-
----
-
-## 6. Limitations and Bias
-
-Where does your recommender struggle
-
-Some prompts:
-
-- Does it ignore some genres or moods
-- Does it treat all users as if they have the same taste shape
-- Is it biased toward high energy or one genre by default
-- How could this be unfair if used in a real product
-
----
-
-## 7. Evaluation
-
-How did you check your system
-
-Examples:
-
-- You tried multiple user profiles and wrote down whether the results matched your expectations
-- You compared your simulation to what a real app like Spotify or YouTube tends to recommend
-- You wrote tests for your scoring logic
-
-You do not need a numeric metric, but if you used one, explain what it measures.
-
----
-
-## 8. Future Work
-
-If you had more time, how would you improve this recommender
-
-Examples:
-
-- Add support for multiple users and "group vibe" recommendations
-- Balance diversity of songs instead of always picking the closest match
-- Use more features, like tempo ranges or lyric themes
-
----
-
-## 9. Personal Reflection
-
-A few sentences about what you learned:
-
-- What surprised you about how your system behaved
-- How did building this change how you think about real music recommenders
-- Where do you think human judgment still matters, even if the model seems "smart"
-```
+The most important lesson was about guardrails. Every failure mode that surfaced (quota errors, empty API responses, JavaScript stripping, encoding issues, stale caches) had a visible symptom only because diagnostic output was added. Silent failures are the hardest problems to debug. Building systems that fail loudly is as important as building systems that work correctly.
