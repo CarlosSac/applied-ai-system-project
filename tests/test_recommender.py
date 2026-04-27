@@ -1,4 +1,8 @@
-from src.recommender import Song, UserProfile, Recommender, detect_genre_bias, generate_explanation
+from src.recommender import (
+    Song, UserProfile, Recommender,
+    detect_genre_bias, generate_explanation,
+    genre_diversity, score_spread, feature_balance,
+)
 
 def make_small_recommender() -> Recommender:
     songs = [
@@ -106,3 +110,56 @@ def test_detect_genre_bias_no_flag_when_genre_share_is_low():
     assert is_biased is False
     assert share <= 0.50
     assert warning is None
+
+
+# --- Phase 4: Evaluation metrics ---
+
+def make_recommendations(songs_data, scores, explanations=None):
+    """Helper: build a fake recommendations list without running the full pipeline."""
+    if explanations is None:
+        explanations = [""] * len(songs_data)
+    return list(zip(songs_data, scores, explanations))
+
+
+def test_genre_diversity_all_different():
+    songs = [
+        {"genre": "pop", "energy": 0.8, "mood": "happy", "acousticness": 0.2},
+        {"genre": "rock", "energy": 0.9, "mood": "intense", "acousticness": 0.1},
+        {"genre": "jazz", "energy": 0.4, "mood": "relaxed", "acousticness": 0.6},
+    ]
+    recs = make_recommendations(songs, [0.8, 0.7, 0.6])
+    assert genre_diversity(recs) == 1.0
+
+
+def test_genre_diversity_all_same():
+    songs = [
+        {"genre": "pop", "energy": 0.8, "mood": "happy", "acousticness": 0.2},
+        {"genre": "pop", "energy": 0.85, "mood": "happy", "acousticness": 0.15},
+    ]
+    recs = make_recommendations(songs, [0.9, 0.8])
+    assert genre_diversity(recs) == 0.5
+
+
+def test_score_spread_identical_scores():
+    songs = [{"genre": "pop", "energy": 0.8, "mood": "happy", "acousticness": 0.2}] * 3
+    recs = make_recommendations(songs, [0.7, 0.7, 0.7])
+    assert score_spread(recs) < 1e-10
+
+
+def test_score_spread_varying_scores():
+    songs = [{"genre": "pop", "energy": 0.8, "mood": "happy", "acousticness": 0.2}] * 3
+    recs = make_recommendations(songs, [1.0, 0.5, 0.0])
+    spread = score_spread(recs)
+    assert spread > 0.0
+
+
+def test_feature_balance_sums_to_one():
+    user_prefs = {"genre": "pop", "mood": "happy", "energy": 0.8, "likes_acoustic": False}
+    songs = [
+        {"genre": "pop", "mood": "happy", "energy": 0.8, "acousticness": 0.2},
+        {"genre": "pop", "mood": "happy", "energy": 0.75, "acousticness": 0.1},
+    ]
+    recs = make_recommendations(songs, [0.9, 0.85])
+    balance = feature_balance(user_prefs, recs)
+    assert set(balance.keys()) == {"genre", "mood", "energy", "acoustic"}
+    assert abs(sum(balance.values()) - 1.0) < 1e-6
