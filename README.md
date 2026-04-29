@@ -12,7 +12,7 @@ This project builds on the Module 3 Music Recommender, a rule-based system that 
 
 Users define a taste profile (preferred genre, mood, energy level, and acoustic preference), and the system scores every song in a real Spotify catalog, ranks the top matches, flags potential genre-bias in the scoring, and uses Claude (Anthropic's AI model) to generate a plain-English explanation for each recommendation. Evaluation metrics (genre diversity, score spread, and feature balance) are computed and displayed after every run.
 
-The system matters because it demonstrates how transparency and guardrails can be built into an AI pipeline: every recommendation is explainable, every bias is surfaced, and every fallback is handled gracefully.
+The system matters because it demonstrates how transparency and guardrails can be built into an AI pipeline: every recommendation is explainable, every bias is surfaced, and every failure is handled without breaking the user experience.
 
 ---
 
@@ -114,6 +114,7 @@ pytest
 **Profile:** genre=pop, mood=happy, energy=0.90, likes_acoustic=False
 
 **Output:**
+
 ```
 #1  Levitating – Dua Lipa
     Score : 0.93
@@ -132,6 +133,7 @@ pytest
 **Profile:** genre=metal, mood=intense, energy=0.92, likes_acoustic=False
 
 **Output:**
+
 ```
 #1  Killing in the Name – Rage Against the Machine
     Score : 0.50
@@ -152,6 +154,7 @@ pytest
 **Profile:** genre=lofi, mood=chill, energy=0.35, likes_acoustic=True
 
 **Output:**
+
 ```
 #1  Snowfall – Øneheart
     Score : 0.91
@@ -180,6 +183,7 @@ API availability is not guaranteed. The system always produces output. If Claude
 The original catalog had 15 hand-crafted songs. The Kaggle dataset is sorted alphabetically by genre, so a naive `--limit 200` would return only acoustic songs. The `prepare_spotify.py` script groups by genre and samples evenly to ensure catalog diversity, which directly affects diversity metrics and recommendation quality.
 
 **Trade-offs made:**
+
 - Fixed weights mean users cannot express that they care more about energy than genre. A future version could expose weight sliders.
 - Mood is derived from valence and energy thresholds, not labeled by humans. Edge cases exist.
 - One Claude API call per recommendation means 3 songs = 3 sequential requests. This is slow but keeps the code simple and the cost low.
@@ -188,19 +192,24 @@ The original catalog had 15 hand-crafted songs. The Kaggle dataset is sorted alp
 
 ## Testing Summary
 
+**10 out of 10 automated tests pass.** The scoring engine, bias detection (flagged and non-flagged cases), fallback explanation generator, and all three evaluation metrics are covered. The system uses four reliability mechanisms: automated unit tests (`pytest`), weighted score breakdowns that act as confidence indicators for each recommendation, `print`-based error logging that surfaces API failures instead of hiding them, and a startup health check that diagnoses API key issues before any recommendations run.
+
 **What worked:**
+
 - All 10 pytest tests pass, covering scoring logic, bias detection (both flagged and non-flagged cases), fallback explanation generation, and all three evaluation metric functions.
 - The bias detection correctly flags genre-heavy recommendations and injects the warning into Claude's prompt, which then surfaces it in plain English.
 - The health check at startup reliably diagnoses API key issues before running recommendations.
 - Progressive rendering in the UI (one card at a time as Claude responds) significantly improves perceived performance.
 
 **What did not work initially:**
+
 - Gemini API (original provider) had a quota limit of 0 on the free tier; the project switched to Anthropic Claude.
 - Silent exception handling in `generate_explanation` hid all API errors. Adding diagnostic print statements immediately identified the issue.
 - Streamlit's `st.markdown` strips JavaScript, so Plotly charts cannot be embedded via `to_html()`; replaced with pure CSS/HTML progress bars for the in-card breakdown.
 - Newlines in Claude's response broke the HTML card structure; fixed by stripping newlines before inserting explanation text into HTML.
 
 **What was learned:**
+
 - LLM outputs require sanitization before embedding in HTML: special characters, markdown formatting (`**bold**`), and newlines all need handling.
 - Caching (`@st.cache_data`) masks data updates; after regenerating the CSV, the Streamlit cache must be cleared manually.
 - The "reliability" requirement is met not just by tests but by the combination of health checks, fallback logic, bias guardrails, and evaluation metrics working together.
@@ -211,6 +220,6 @@ The original catalog had 15 hand-crafted songs. The Kaggle dataset is sorted alp
 
 Building this project made the gap between "correct by the formula" and "actually useful" very concrete. The scoring rules are transparent and traceable, but that transparency also exposes their limits: a user who wants high-energy folk gets a song that matches genre and mood but directly contradicts their energy target, because genre and mood together outweigh the energy penalty. The system is honest about this through the bias detection, but honesty does not fix the underlying limitation.
 
-Integrating Claude changed how the explanations feel without changing what the system knows. The AI did not add new information; it received the same breakdown the rule-based fallback uses, but communicated it in a way that felt more human and contextually aware. That distinction matters: AI here is an interface layer, not the reasoning layer. The reasoning is the scoring logic. Keeping those two roles separate made the system easier to test, easier to debug, and easier to trust.
+Integrating Claude changed how the explanations feel without changing what the system knows. The AI did not add new information; it received the same breakdown the rule-based fallback uses, but communicated it in a way that felt more human and contextually aware. AI here is an interface layer, not the reasoning layer. The reasoning is the scoring logic. Keeping those two roles separate made the system easier to test, easier to debug, and easier to trust.
 
-The most important lesson was about guardrails. Every failure mode that surfaced (quota errors, empty API responses, JavaScript stripping, encoding issues, stale caches) had a visible symptom only because diagnostic output was added. Silent failures are the hardest problems to debug. Building systems that fail loudly is as important as building systems that work correctly.
+The most important lesson was about guardrails. Every failure mode that surfaced (quota errors, empty API responses, JavaScript stripping, encoding issues, stale caches) had a visible symptom only because diagnostic output was added. Silent failures are the hardest problems to debug.
