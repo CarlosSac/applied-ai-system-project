@@ -79,7 +79,7 @@ ANTHROPIC_API_KEY=your_api_key_here
 
 Get a key at [console.anthropic.com](https://console.anthropic.com).
 
-### 5. Prepare the song catalog
+### 5. Prepare the song catalog (Optional)
 
 Download the Spotify Tracks Dataset from Kaggle (`maharshipandya/spotify-tracks-dataset`) and place the CSV in `data/`. Then run:
 
