@@ -1,88 +1,96 @@
-# 🎧 Model Card: Music Recommender Simulation
+# Model Card
 
 ## 1. Model Name
 
-**VibeMatch 1.0**
+**Music Recommender Studio**
 
 ---
 
 ## 2. Intended Use
 
-VibeMatch suggests songs based on a user's stated preferences. It assumes the user can describe their taste in four words: a genre, a mood, a target energy level, and whether they like acoustic sounds. It does not learn from listening history or behavior.
+VibeMatch suggests songs from a real Spotify catalog based on a user's stated taste profile: preferred genre, mood, target energy, and acoustic preference. It generates a plain-English explanation for each recommendation using Claude, detects when the scoring is over-relying on a single feature, and reports evaluation metrics after every run. It is intended as an educational demonstration of a transparent, explainable AI recommendation pipeline.
 
 ---
 
 ## 3. How the Model Works
 
-Every song in the catalog gets a score between 0 and 1. The score is built from four rules:
+Every song in the catalog receives a weighted score between 0 and 1:
 
-- If the song's genre matches what the user wants, it gets the most points (0.30).
-- If the mood matches, it gets the second most points (0.25).
-- The closer the song's energy is to the user's target, the more points it gets (up to 0.25).
-- If the user likes acoustic music, songs that sound more acoustic score higher. If not, less acoustic songs score higher (up to 0.20).
+| Feature          | Weight     |
+| ---------------- | ---------- |
+| Genre match      | 0.30       |
+| Mood match       | 0.25       |
+| Energy proximity | up to 0.25 |
+| Acoustic fit     | up to 0.20 |
 
-All songs are ranked by their total score. The top five are returned, each with a short note explaining what contributed to its score.
+Songs are ranked by total score. The top-k results are passed individually to Claude Haiku, which receives the score breakdown, rule traces, and any bias warning as structured context and generates a 2-3 sentence plain-English explanation. If the Claude API is unavailable, a deterministic rule-based explanation is produced instead. After all results are shown, three evaluation metrics are computed: genre diversity, score spread, and feature balance.
 
 ---
 
 ## 4. Data
 
-The catalog has 15 songs stored in a CSV file. Each song has a title, artist, genre, mood, energy (0–1), tempo, valence, danceability, and acousticness.
-
-Genres represented: pop, lofi, rock, ambient, jazz, synthwave, indie pop, hip-hop, classical, reggae, folk, r&b.
-
-Moods represented: happy, chill, intense, relaxed, moody, focused, confident, melancholic, uplifting, nostalgic, romantic.
-
-15 songs were added to the original ten to improve diversity. Still, some genres (like lofi) have three songs while most others have only one. 
+The catalog is sourced from the Spotify Tracks Dataset on Kaggle (`maharshipandya/spotify-tracks-dataset`), processed through `data/prepare_spotify.py`. The script samples songs evenly across genres to ensure diversity. Mood is derived from Spotify's `valence` and `energy` audio features using fixed thresholds since Spotify does not provide mood labels directly. The catalog is not redistributed in this repository; users generate it locally using the provided script.
 
 ---
 
 ## 5. Strengths
 
-The system works best when the user's preferences match a well-represented genre and mood in the catalog. A lofi/chill user gets two strong matches in the top three. A rock/intense user gets one near-perfect result at the top.
-
-The scoring is fully transparent. Every recommendation comes with a breakdown of exactly why it ranked where it did. There are no hidden signals or black-box decisions.
-
-It also handles missing preferences. If the user does not include `likes_acoustic`, that part of the score is simply skipped without crashing.
+The system is fully transparent: every recommendation comes with a weighted score breakdown showing exactly how much each feature contributed. The bias detection layer flags recommendations where a single feature dominates, making over-reliance visible rather than hidden. The Claude explanation grounds its output in the retrieved score data, so users can verify the reasoning against the numbers shown. The fallback ensures the system always produces output regardless of API availability.
 
 ---
 
 ## 6. Limitations and Bias
 
-**Genre creates a permanent filter bubble.** Genre carries the single largest weight (0.30) and is a binary match. A user whose preferred genre is not in the catalog (like "metal") can never earn that 0.30, meaning they are structurally disadvantaged compared to every other user. More subtly, a genre match with a weak mood and energy fit can still outrank a near-perfect match from a different genre. The system never discovers cross-genre connections.
-
-**Rare moods are underrepresented.** The catalog contains 3 chill songs and 2 happy songs, but only 1 song each for moods like romantic, melancholic, nostalgic, and confident. A "chill" user gets up to 3 mood-match bonuses to compete for, while a "romantic" user can only ever match 1 song on mood.
-
-**Acoustic preference punishes "middle acoustic" songs for everyone.** Songs with acousticness in the 0.35–0.55 range score weakly for both acoustic and non-acoustic users. They are disadvantaged regardless of who is asking.
-
-**The system does not consider features that matter to real listeners.** Tempo, valence, danceability, lyrics, language, and release year are all ignored. Two lofi songs with very different tempos are treated identically.
+Genre is applied as a binary match and carries the single largest weight. A user whose preferred genre is absent from the catalog will never earn that 0.30, structurally capping their maximum possible score compared to users whose genre is well-represented. Mood is approximate: it is derived from valence and energy thresholds rather than human labels, so edge cases exist where the computed mood does not match how a listener would describe the song. The weights are fixed for all users, meaning someone who cares far more about energy than genre has no way to express that. The system also scores each recommendation independently, so the top-k results can include multiple songs by the same artist.
 
 ---
 
 ## 7. Evaluation
 
-Seven user profiles were tested: three standard (High-Energy Pop, Chill Lofi, Deep Intense Rock) and four adversarial (Sad but Hype, Ghost Genre, Acoustic Chaos, Middle of the Road). For each, I looked at whether the top result made intuitive sense, how sharply scores dropped after #1, and whether the reasons matched the expected scoring logic.
+The system is validated through 10 automated tests covering scoring logic, bias detection (flagged and non-flagged cases), fallback explanation generation, and all three evaluation metric functions. Four profiles were used during development to stress-test behavior:
 
-**High-Energy Pop vs. Sad but Hype:** Both share genre=pop and energy=0.9, but swap mood from happy to sad. Sunrise City scored 0.94 for the first profile because it matched all four criteria. In Sad but Hype it dropped to #2 because no pop/sad song exists — the mood weight was permanently wasted. This shows that a missing mood in the catalog reduces the user's maximum possible score by 0.25.
+**Ghost Genre (genre=metal):** Metal is not in the catalog. The genre weight is permanently zero, capping the maximum score at 0.70. The bias detection correctly flags these results since energy and acoustic contributions dominate.
 
-**Chill Lofi vs. Middle of the Road:** Chill Lofi produced the most confident results (0.97 and 0.92) because the catalog has three lofi/chill songs. Middle of the Road had one perfect match at 0.95, then fell to 0.38 for second place. Users whose genre appears more often get better results.
+**Sad but Hype (genre=pop, mood=sad):** No pop/sad song exists in the catalog, so the mood weight is always wasted. The system returns pop songs ranked by energy and acousticness alone, which the evaluation metrics capture as low genre diversity.
 
-**Deep Intense Rock vs. Ghost Genre (metal):** Storm Runner scored 0.97 for the rock user. For the metal user wanting the same mood and energy, the top score was only 0.69 because the genre weight was always zero. The system degraded gracefully but the ceiling dropped significantly.
+**Acoustic Chaos (genre=folk, energy=0.95):** Folk songs are inherently low energy, so the system recommends a genre/mood match that directly contradicts the energy preference. The feature balance metric shows energy contributing minimally, which surfaces the tension.
 
-**Acoustic Chaos (folk, nostalgic, energy=0.95):** Dirt Road Memories scored 0.81 through genre+mood match, but its energy match was only +0.09 because folk songs are inherently low energy. The system recommended a song that directly contradicted the energy preference, exposing that high-weight categorical features can override numeric ones.
+**Chill Lofi:** The most consistent profile. Genre, mood, energy, and acousticness all align well with available songs, producing the highest diversity scores and tightest score spread across runs.
 
 ---
 
 ## 8. Future Work
 
-- **Add more songs per genre and mood.** One song per category is not enough to produce diverse results. A catalog of 100+ songs would make the scoring differences more meaningful.
-- **Make weights adjustable per user.** A user who cares a lot about energy but not about genre should be able to say so. Fixed weights treat everyone the same way.
-- **Penalize repetition in results.** Right now the top 5 can include two songs by the same artist. A diversity rule that limits repeats would make recommendations feel less narrow.
+**Replace the CSV catalog with a live music API.**
+The biggest structural limitation is the static catalog. If a genre is missing from the CSV, no song of that genre will ever appear. Integrating the Spotify Web API or Last.fm would allow the system to query a fresh set of candidate tracks for each user profile, score them through the existing pipeline, and return results from millions of real songs. This eliminates the catalog coverage problem entirely and removes the need for users to download and prepare a dataset manually.
+
+**Make weights adjustable per user.**
+Fixed weights treat every user identically. Exposing weight sliders in the sidebar would allow users to prioritize energy over genre or mood over acousticness, making the scoring formula genuinely personalized rather than just preference-filtered.
+
+**Add artist and tempo diversity rules.**
+The current top-k results can include two songs by the same artist or songs at nearly identical tempos. A post-ranking diversity filter would make recommendations feel less narrow without changing the scoring logic.
+
+**Add collaborative signals.**
+Storing anonymized preference profiles over time would allow a lightweight collaborative filtering layer: users with similar genre and mood preferences could receive songs that performed well for similar profiles, adding a behavioral dimension to the currently feature-only scoring.
 
 ---
 
-## 9. Personal Reflection
+## 9. Reflection and Ethics
 
-Building this made it clear how much a recommender depends on its data, not just its logic. The scoring rules made sense on paper, but the results were only as good as the catalog behind them. A user looking for metal or country got nothing useful — not because the algorithm was wrong, but because those genres simply were not there.
+**What are the limitations or biases in your system?**
 
-The most surprising result was the Acoustic Chaos profile. The system recommended a folk song to a user who wanted high energy, just because genre and mood matched. It was technically correct by the scoring rules, but intuitively wrong. That gap between "correct by the formula" and "actually useful" is probably the most important thing I took away from this project. Real recommenders have to deal with that gap at a much larger scale.
+Genre dominance is the clearest structural bias. Because genre is a binary match worth 0.30, it creates a tiered system where users whose preferred genre is well-stocked in the catalog consistently receive better recommendations than users whose genre is rare or absent. This is not a flaw in the algorithm, it is a consequence of how the catalog is populated. The mood derivation adds a second layer of approximation: songs near the valence and energy thresholds can be assigned a mood that does not match listener perception, and that error propagates directly into the scoring.
+
+**Could your AI be misused, and how would you prevent that?**
+
+The explanation module sends song metadata to Claude as part of a prompt. If song titles or artist names in the catalog contained adversarial text designed to manipulate the model's output, the explanation could produce harmful or misleading content. The current mitigations are `html.escape()` on all user-facing text before rendering and a prompt structure that clearly labels song data as context rather than instructions. A stronger mitigation would be validating catalog entries at load time and rejecting rows with unusual formatting or injected syntax.
+
+**What surprised you while testing your AI's reliability?**
+
+The most unexpected finding was how many failures were invisible before diagnostic output was added. The original implementation caught all exceptions silently and returned the rule-based fallback with no indication that Claude had never been called. The app appeared to work correctly across multiple runs. Only after adding `print(f"[Claude] unavailable: {exc}")` did it become clear that the Gemini API key had a quota of zero, and later that the `google-genai` package was not installed in the virtual environment at all. The fallback was indistinguishable from a live response, which made the system appear reliable when it was not. Building systems that fail visibly turned out to be as important as building systems that work correctly.
+
+**Collaboration with AI during this project.**
+
+Claude was used throughout development as a coding collaborator. One instance where the suggestion was genuinely helpful was the progressive rendering approach for the UI. The original implementation froze the interface silently for 10 to 20 seconds while all Claude API calls finished. Claude suggested converting the recommendation builder into a Python generator that yields one result at a time, paired with `st.status` to show live progress. Each card appears on screen as soon as its explanation is ready, which made the system feel responsive without changing any underlying logic.
+
+One instance where the suggestion was flawed was the initial attempt to embed a Plotly chart inside a card using `fig.to_html()` injected into `st.markdown`. The approach generated valid HTML, but Streamlit's markdown renderer strips JavaScript for security reasons, leaving a blank space where the chart should appear. The fix was switching to pure CSS progress bars, which have no JavaScript dependency. The lesson was that a technically correct approach can still fail silently when the execution environment imposes constraints that are not visible from the API surface.
