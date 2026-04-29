@@ -34,7 +34,7 @@ User Profile + Spotify Catalog
    Streamlit Dashboard     (cards + breakdown bars + Spotify player + metrics chart)
 ```
 
-See [diagram.mmd](diagram.mmd) for the full system diagram.
+See [diagram.mmd](assets\diagrams\diagram.png) for the full system diagram.
 
 The pipeline is retrieval-augmented: before Claude generates an explanation, it receives the song metadata, the weighted score breakdown, the rule traces, and any bias warning as structured context. Claude's output is grounded in that retrieved data and cannot invent features that are not there. If the API is unavailable, the system falls back to deterministic rule-based text so recommendations always display.
 
@@ -223,3 +223,12 @@ Building this project made the gap between "correct by the formula" and "actuall
 Integrating Claude changed how the explanations feel without changing what the system knows. The AI did not add new information; it received the same breakdown the rule-based fallback uses, but communicated it in a way that felt more human and contextually aware. AI here is an interface layer, not the reasoning layer. The reasoning is the scoring logic. Keeping those two roles separate made the system easier to test, easier to debug, and easier to trust.
 
 The most important lesson was about guardrails. Every failure mode that surfaced (quota errors, empty API responses, JavaScript stripping, encoding issues, stale caches) had a visible symptom only because diagnostic output was added. Silent failures are the hardest problems to debug.
+
+## About
+
+**What this project says about me as an AI engineer?**
+Building this project taught me that integrating AI into a system is the easy part, knowing where it belongs is the real skill. I used a retrieval-augmented generation pattern: before Claude generates any explanation, the system retrieves the score breakdown, rule traces, and bias signal and hands that to the model as grounded context. Claude is not guessing. It is translating data that already exists into language a user can read. That separation between deterministic reasoning on one side, and language generation on the other is what made the system testable and trustworthy.
+
+The other thing this project says about me: I take failure modes as seriously as features. Every guardrail in this system (the bias flag, the health check, the fallback, the diagnostic logging) exists because a silent failure once made the app look correct when it had never called the AI at all. I want to build systems that are honest about what they know, what they cannot do, and when something has gone wrong.
+
+[![Watch the video](https://cdn.loom.com/sessions/thumbnails/6477834a2afa4db682791411fb1cf2cb-70bdd3e211f9bbb5-full-play.gif#t=0.1)](https://www.loom.com/share/6477834a2afa4db682791411fb1cf2cb)
