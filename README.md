@@ -14,7 +14,7 @@ Users define a taste profile (preferred genre, mood, energy level, and acoustic 
 
 The system matters because it demonstrates how transparency and guardrails can be built into an AI pipeline: every recommendation is explainable, every bias is surfaced, and every failure is handled without breaking the user experience.
 
-<img src="assets/demo/demo.gif" width=600>
+<img src="assets/demo/demo.gif" width=700>
 
 ---
 
