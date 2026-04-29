@@ -34,7 +34,7 @@ User Profile + Spotify Catalog
    Streamlit Dashboard     (cards + breakdown bars + Spotify player + metrics chart)
 ```
 
-See [diagram.mmd](assets\diagrams\diagram.png) for the full system diagram.
+See [diagram](assets/diagrams/diagram.png) for the full system diagram.
 
 The pipeline is retrieval-augmented: before Claude generates an explanation, it receives the song metadata, the weighted score breakdown, the rule traces, and any bias warning as structured context. Claude's output is grounded in that retrieved data and cannot invent features that are not there. If the API is unavailable, the system falls back to deterministic rule-based text so recommendations always display.
 
